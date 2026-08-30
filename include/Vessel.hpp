@@ -4,25 +4,24 @@ namespace SailingEngine {
 
     enum class PropulsionType {
         SAIL_ONLY,
-        ENGINE,
+        ENGINE_ONLY,
         HYBRID
     };
 
     class Vessel {
     private:
-        double length;     // Length Overall (LOA) in meters
-        double width;      // Beam (maximum width) in meters
-        double draft;      // Ship's depth below waterline in meters
+        double lengthOverall;
+        double beam;
+        double draft;
         PropulsionType propulsion;
 
     public:
-        Vessel(double vesselLength, double vesselWidth, double vesselDraft, PropulsionType propType)
-            : length(vesselLength), width(vesselWidth), draft(vesselDraft), propulsion(propType) {}
+        Vessel(double loa, double b, double d, PropulsionType p)
+            : lengthOverall(loa), beam(b), draft(d), propulsion(p) {}
 
-        double getLength() const { return length; }
-        double getWidth() const { return width; }
+        // Getters
         double getDraft() const { return draft; }
-        PropulsionType getPropulsionType() const { return propulsion; }
+        PropulsionType getPropulsion() const { return propulsion; }
     };
 
 } // namespace SailingEngine

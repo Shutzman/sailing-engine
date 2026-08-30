@@ -1,27 +1,26 @@
 #pragma once
 #include <vector>
 #include "Grid.hpp"
-#include "Vessel.hpp"
 #include "Node.hpp"
+#include "Vessel.hpp"
+#include "Environment.hpp"
 
 namespace SailingEngine {
 
     class Pathfinder {
     private:
-        // Reference to the environment grid to avoid expensive data copies
-        Grid& grid; 
-
-        // Calculates the heuristic cost (H-Cost) between two nodes
-        double calculateHeuristic(Node* startNode, Node* targetNode) const;
-
-        // Reconstructs the final path by tracing parent pointers backwards
+        Grid& grid;
+        
+        double calculateHeuristic(Node* a, Node* b) const;
         std::vector<Node*> retracePath(Node* startNode, Node* endNode) const;
+        
+        // Navigation vector mathematics
+        double calculateHeading(int dx, int dy) const;
+        double getWindCostMultiplier(double heading, const Wind& wind, PropulsionType propulsion) const;
 
     public:
-        Pathfinder(Grid& gridRef);
-
-        // Core A* pathfinding algorithm implementation.
-        // Returns the optimal route as a vector of Nodes, or an empty vector if no valid path exists.
+        explicit Pathfinder(Grid& gridRef);
+        
         std::vector<Node*> findPath(int startX, int startY, int targetX, int targetY, const Vessel& vessel);
     };
 

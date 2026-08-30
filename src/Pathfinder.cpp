@@ -4,15 +4,57 @@
 #include <unordered_set>
 #include <iostream>
 
+// Ensure M_PI is defined (some MSVC configurations omit it by default)
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
 namespace SailingEngine {
 
     Pathfinder::Pathfinder(Grid& gridRef) : grid(gridRef) {}
 
     double Pathfinder::calculateHeuristic(Node* a, Node* b) const {
-        // Standard Euclidean distance metric
         double dx = a->x - b->x;
         double dy = a->y - b->y;
         return std::sqrt(dx * dx + dy * dy);
+    }
+
+    double Pathfinder::calculateHeading(int dx, int dy) const {
+        // Cartesian grid to Compass heading:
+        // dx is East (+), dy is South (+)
+        // atan2(dx, -dy) maps (0, -1) to 0 rad (North), (1, 0) to pi/2 rad (East)
+        double heading = std::atan2(dx, -dy) * (180.0 / M_PI);
+        if (heading < 0.0) {
+            heading += 360.0;
+        }
+        return heading;
+    }
+
+    double Pathfinder::getWindCostMultiplier(double heading, const Wind& wind, PropulsionType propulsion) const {
+        // Calculate True Wind Angle (TWA) - difference between heading and wind direction
+        double diff = std::fmod(std::abs(heading - wind.directionDegrees), 360.0);
+        double twa = diff > 180.0 ? 360.0 - diff : diff; // Normalize to [0, 180] degrees
+
+        // The No-Go Zone (Direct Headwind)
+        if (twa < 45.0) {
+            if (propulsion == PropulsionType::SAIL_ONLY) {
+                return -1.0; // Impassable
+            } else {
+                return 3.0; // High resistance penalty for engines pushing into wind
+            }
+        }
+        // Close-Hauled (Upwind)
+        else if (twa < 60.0) {
+            return 1.5; // Slower progress due to leeway and heeling
+        }
+        // Reaching (Wind across the beam) - Fastest point of sail
+        else if (twa < 120.0) {
+            return 0.8; // Efficiency discount
+        }
+        // Running Downwind
+        else {
+            return 1.0; // Good speed, but generally slightly slower than a broad reach
+        }
     }
 
     std::vector<Node*> Pathfinder::retracePath(Node* startNode, Node* endNode) const {
@@ -24,7 +66,6 @@ namespace SailingEngine {
             currentNode = currentNode->parent;
         }
         
-        // Invert path to establish forward trajectory from start to destination
         std::reverse(path.begin(), path.end());
         return path;
     }
@@ -33,26 +74,22 @@ namespace SailingEngine {
         Node* startNode = grid.getNode(startX, startY);
         Node* targetNode = grid.getNode(targetX, targetY);
 
-        // Boundary constraint verification
         if (!startNode || !targetNode) {
             std::cerr << "Error: Start or Target coordinates are out of bounds.\n";
             return {};
         }
 
-        // Vessel draft navigability validation at endpoints
         if (!startNode->isNavigable(vessel.getDraft()) || !targetNode->isNavigable(vessel.getDraft())) {
             std::cerr << "Error: Start or Target tile is impassable for this vessel's draft.\n";
             return {};
         }
 
         std::vector<Node*> openSet;
-        // Hash set for O(1) closed-set lookups
         std::unordered_set<Node*> closedSet;
 
         openSet.push_back(startNode);
 
         while (!openSet.empty()) {
-            // Retrieve node with lowest total estimated cost (fCost), breaking ties with hCost
             auto currentNodeIt = openSet.begin();
             for (auto it = openSet.begin(); it != openSet.end(); ++it) {
                 if ((*it)->fCost() < (*currentNodeIt)->fCost() || 
@@ -70,7 +107,6 @@ namespace SailingEngine {
                 return retracePath(startNode, targetNode);
             }
 
-            // Evaluate 8-directional adjacent nodes
             for (int dx = -1; dx <= 1; ++dx) {
                 for (int dy = -1; dy <= 1; ++dy) {
                     if (dx == 0 && dy == 0) continue;
@@ -79,14 +115,23 @@ namespace SailingEngine {
                     int checkY = currentNode->y + dy;
                     Node* neighbor = grid.getNode(checkX, checkY);
 
-                    // Skip unnavigable, visited, or out-of-bound nodes
                     if (!neighbor || closedSet.count(neighbor) || !neighbor->isNavigable(vessel.getDraft())) {
                         continue;
                     }
 
-                    // Geometric traversal cost: 1.0 cardinal, sqrt(2) diagonal
-                    double moveCost = (dx != 0 && dy != 0) ? 1.414 : 1.0;
-                    double newCostToNeighbor = currentNode->gCost + moveCost;
+                    // --- WIND PHYSICS INTEGRATION ---
+                    double heading = calculateHeading(dx, dy);
+                    Wind localWind = grid.getWindAt(checkX, checkY);
+                    double windMultiplier = getWindCostMultiplier(heading, localWind, vessel.getPropulsion());
+
+                    // If the multiplier is negative, the boat cannot physically sail in this direction
+                    if (windMultiplier < 0) {
+                        continue;
+                    }
+
+                    double baseMoveCost = (dx != 0 && dy != 0) ? 1.414 : 1.0;
+                    double newCostToNeighbor = currentNode->gCost + (baseMoveCost * windMultiplier);
+                    // --------------------------------
 
                     bool inOpenSet = std::find(openSet.begin(), openSet.end(), neighbor) != openSet.end();
 
