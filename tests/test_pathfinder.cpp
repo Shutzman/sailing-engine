@@ -14,7 +14,7 @@ using namespace SailingEngine;
 void runSailingboatScenario();
 void runMotorboatScenario();
 void runTrappedSailboatScenario();
-void runHybridRescueScenario();
+void runHybridboatScenario();
 
 int main() {
     std::cout << "Running Sailing Engine Test Suite...\n\n";
@@ -22,7 +22,7 @@ int main() {
     runSailingboatScenario();
     runMotorboatScenario();
     runTrappedSailboatScenario();
-    runHybridRescueScenario();
+    runHybridboatScenario();
     
     std::cout << "\nAll tests passed successfully!\n";
     return 0;
@@ -35,20 +35,23 @@ void runSailingboatScenario() {
     Pathfinder pathfinder(ocean);
     
     Point start{2, 5};
-    Point target{17, 5};
+    Point destination{17, 5};
 
-    std::vector<Node*> route = pathfinder.findPath(start, target, sailboat);
-    // Visualizer::printGrid(ocean, route, start, target); // Uncomment to see visualization
+    std::vector<Node*> route = pathfinder.findPath(start, destination, sailboat);
+    
+    // Visualizer::printGrid(ocean, route, start, destination); // Uncomment to see visualization
 
-    assert(!route.empty() && "Test Failed: Route should not be empty!");
+    assert(!route.empty() && "Test Failed: Sailing boat Route should not be empty!");
 
     double expectedCost = 32.615; 
     double actualCost = route.back()->gCost;
     bool costMatches = std::abs(actualCost - expectedCost) < 0.01;
 
-    assert(costMatches && "Test Failed: Path cost did not match expected cost!");
+    // std::cout << "\nActual cost: " << actualCost << "\n"; // Uncomment to see actual cost
 
-    std::cout << "[PASS] Tactical Sailing Scenario\n";
+    assert(costMatches && "Test Failed: Sailing boat cost mismatch!");
+
+    std::cout << "[PASS] Sailing Scenario\n";
 }
 
 void runMotorboatScenario() {
@@ -62,15 +65,18 @@ void runMotorboatScenario() {
     Point destination{17, 5};
 
     std::vector<Node*> route = pathfinder.findPath(start, destination, motorboat);
-    // Visualizer::printGrid(ocean, route, start, target); // Uncomment to see visualization
+    
+    // Visualizer::printGrid(ocean, route, start, destination); // Uncomment to see visualization
 
-    assert(!route.empty() && "Test Failed: Route should not be empty!");
+    assert(!route.empty() && "Test Failed: Motorboat route should not be empty!");
 
-    double expectedCost = 30.0; 
+    double expectedCost = 37.5; 
     double actualCost = route.back()->gCost;
     bool costMatches = std::abs(actualCost - expectedCost) < 0.01;
 
-    assert(costMatches && "Test Failed: Path cost did not match expected cost!");
+    // std::cout << "\nActual cost: " << actualCost << "\n"; // Uncomment to see actual cost
+
+    assert(costMatches && "Test Failed: Motorboat cost mismatch!");
 
     std::cout << "[PASS] Motorboat Scenario\n";
 }
@@ -94,15 +100,15 @@ void runTrappedSailboatScenario() {
     Point destination{15, 5};
 
     std::vector<Node*> route = pathfinder.findPath(start, destination, sailboat);
-    // Visualizer::printGrid(ocean, route, start, target); // Uncomment to see visualization
+    // Visualizer::printGrid(ocean, route, start, destination); // Uncomment to see visualization
 
     // Assert that the route is EMPTY because the sailboat cannot tack in the narrow channel!
     assert(route.empty() && "Test Failed: Sailboat should be trapped!");
-    
+
     std::cout << "[PASS] Trapped Sailboat Scenario (No route possible)\n";
 }
 
-void runHybridRescueScenario() {
+void runHybridboatScenario() {
     Grid ocean(20, 10);
     ocean.setUniformWind(Wind(90.0, 15.0)); 
     
@@ -120,19 +126,20 @@ void runHybridRescueScenario() {
     Point target{5, 5};
 
     std::vector<Node*> route = pathfinder.findPath(start, target, hybrid);
-    // Visualizer::printGrid(ocean, route, start, target); // Uncomment to view the route!
+    
+    // Visualizer::printGrid(ocean, route, start, destination); // Uncomment to view the route!
 
     
     // Assert that the route is NOT empty
-    assert(!route.empty() && "Test Failed: Hybrid should have powered through!");
+    assert(!route.empty() && "Test Failed: Hybrid boat route Route should not be empty!\n");
     
-    // Distance is 15 straight tiles. 
-    // 15 tiles * 1.0 base cost * 2.0 headwind engine penalty = 30.0
-    double expectedCost = 45.777; 
+    double expectedCost = 54.398; 
     double actualCost = route.back()->gCost; 
     bool costMatches = std::abs(actualCost - expectedCost) < 0.01;
 
-    assert(costMatches && "Test Failed: Hybrid cost mismatch!");
+    // std::cout << "\nActual cost: " << actualCost << "\n"; // Uncomment to see actual cost
+
+    assert(costMatches && "Test Failed: Hybrid boat cost mismatch!\n");
     
-    std::cout << "[PASS] Hybrid Rescue Scenario\n";
+    std::cout << "[PASS] Hybrid Scenario\n";
 }

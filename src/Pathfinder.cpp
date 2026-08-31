@@ -31,31 +31,68 @@ namespace SailingEngine {
     }
 
     double Pathfinder::getWindCostMultiplier(double heading, const Wind& wind, PropulsionType propulsion) const {
-        // Calculate True Wind Angle (TWA) - difference between heading and wind direction
-        double diff = std::fmod(std::abs(heading - wind.directionDegrees), 360.0);
-        double twa = diff > 180.0 ? 360.0 - diff : diff; // Normalize to [0, 180] degrees
+            constexpr double TWA_NO_GO = 45.0;
+            constexpr double TWA_CLOSE_HAULED = 60.0;
+            constexpr double TWA_BEAM_REACH = 120.0;
 
-        // The No-Go Zone (Direct Headwind)
-        if (twa < 45.0) {
-            if (propulsion == PropulsionType::SAIL_ONLY) {
-                return -1.0; // Impassable
-            } else {
-                return 2.0; // High resistance penalty for engines pushing into wind
+            constexpr double SPEED_BECALMED = 3.0;
+            constexpr double SPEED_OPTIMAL = 20.0;
+            constexpr double SPEED_HEAVY_WEATHER = 25.0;
+            constexpr double SPEED_STORM = 45.0;
+            constexpr double SPEED_HURRICANE = 50.0;
+
+            constexpr double COST_IMPASSABLE = -1.0;
+            
+            // Calculate True Wind Angle (TWA)
+            double diff = std::fmod(std::abs(heading - wind.directionDegrees), 360.0);
+            double twa = diff > 180.0 ? 360.0 - diff : diff; // Normalize True Wind Angle [0, 180]
+            double speed = wind.speedKnots;
+
+            // initialized
+            double costMultiplier = 1.0; 
+
+            // --- 3. EXTREME WEATHER OVERRIDES ---
+            if (speed < SPEED_BECALMED) {
+                return (propulsion == PropulsionType::SAIL_ONLY) ? COST_IMPASSABLE : 1.0;
             }
+            if (speed >= SPEED_HURRICANE && propulsion == PropulsionType::SAIL_ONLY) {
+                return COST_IMPASSABLE; 
+            }
+
+            // --- 4. POINT OF SAIL PHASES ---
+            if (twa < TWA_NO_GO) {
+                if (propulsion == PropulsionType::SAIL_ONLY) {
+                    costMultiplier = COST_IMPASSABLE;
+                } else {
+                    // Engine fights wind head-on
+                    costMultiplier = 1.0 + (speed / 10.0); 
+                }
+            }
+            else if (twa < TWA_CLOSE_HAULED) {
+                if (propulsion == PropulsionType::SAIL_ONLY) {
+                    costMultiplier = 1.5; // Heavy heeling penalty
+                } else {
+                    costMultiplier = 1.0 + (speed / 15.0); // Engine pushing angled wind
+                }
+            }
+            else if (twa < TWA_BEAM_REACH) {
+                if (propulsion == PropulsionType::SAIL_ONLY || propulsion == PropulsionType::HYBRID) {
+                    // Optimal sailing phase
+                    costMultiplier = (speed >= SPEED_OPTIMAL && speed < SPEED_STORM) ? 0.6 : 0.8;
+                } else {
+                    // Heavy side-seas cause rolling for motorboats
+                    costMultiplier = (speed >= SPEED_HEAVY_WEATHER) ? 1.2 : 1.0;
+                }
+            }
+            else {
+                // Running Downwind
+                if (propulsion == PropulsionType::SAIL_ONLY) {
+                    costMultiplier = (speed >= SPEED_OPTIMAL) ? 0.8 : 1.0; 
+                }
+            }
+
+            return costMultiplier;
         }
-        // Close-Hauled (Upwind)
-        else if (twa < 60.0) {
-            return 1.5; // Slower progress due to leeway and heeling
-        }
-        // Reaching (Wind across the beam) - Fastest point of sail
-        else if (twa < 120.0) {
-            return 0.8; // Efficiency discount
-        }
-        // Running Downwind
-        else {
-            return 1.0; // Good speed, but generally slightly slower than a broad reach
-        }
-    }
 
     std::vector<Node*> Pathfinder::retracePath(Node* startNode, Node* endNode) const {
         std::vector<Node*> path;
@@ -131,8 +168,27 @@ namespace SailingEngine {
                         continue;
                     }
 
+                    double turnPenalty = 0.0;
+                    
+                    // We can only calculate a turn if we have moved at least one tile from the start
+                    if (currentNode->parent != nullptr) {
+                        // Calculate the dx/dy of our PREVIOUS step
+                        int oldDx = currentNode->pos.x - currentNode->parent->pos.x;
+                        int oldDy = currentNode->pos.y - currentNode->parent->pos.y;
+                        
+                        // If our old trajectory doesn't match our new intended trajectory, we turned!
+                        if (oldDx != dx || oldDy != dy) {
+                            // Flat penalty added to the route cost. 
+                            // 2.0 roughly equals the cost of sailing two extra straight tiles.
+                            turnPenalty = 2.0; 
+                        }
+                    }
+
+                    // --- FINAL COST CALCULATION ---
                     double baseMoveCost = (dx != 0 && dy != 0) ? 1.414 : 1.0;
-                    double newCostToNeighbor = currentNode->gCost + (baseMoveCost * windMultiplier);
+                    
+                    // Add the turn penalty to the total cost to step into this neighbor
+                    double newCostToNeighbor = currentNode->gCost + (baseMoveCost * windMultiplier) + turnPenalty;
 
                     bool inOpenSet = std::find(openSet.begin(), openSet.end(), neighbor) != openSet.end();
 
