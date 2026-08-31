@@ -1,19 +1,18 @@
-cmake_minimum_required(VERSION 3.15)
+cmake_minimum_required(VERSION 3.10)
+project(sailing_engine)
 
-project(SailingEngine VERSION 1.0 LANGUAGES CXX)
-
-# Enforce C++17 standard
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
 
-# Define source files
-set(SOURCES 
-    src/main.cpp
-    src/Grid.cpp
+# 1. Define the source files containing the actual engine logic
+set(ENGINE_SOURCES 
+    src/Grid.cpp 
     src/Pathfinder.cpp
     src/Visualizer.cpp
 )
 
-add_executable(${PROJECT_NAME} ${SOURCES})
-target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+# 2. Build the main production executable
+add_executable(SailingEngine src/main.cpp ${ENGINE_SOURCES})
+
+# 3. Build the testing executable
+add_executable(SailingEngineTests tests/test_pathfinder.cpp ${ENGINE_SOURCES})

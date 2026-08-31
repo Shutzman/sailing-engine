@@ -14,8 +14,8 @@ namespace SailingEngine {
     Pathfinder::Pathfinder(Grid& gridRef) : grid(gridRef) {}
 
     double Pathfinder::calculateHeuristic(Node* a, Node* b) const {
-        double dx = a->x - b->x;
-        double dy = a->y - b->y;
+        double dx = a->pos.x - b->pos.x;
+        double dy = a->pos.y - b->pos.y;
         return std::sqrt(dx * dx + dy * dy);
     }
 
@@ -40,7 +40,7 @@ namespace SailingEngine {
             if (propulsion == PropulsionType::SAIL_ONLY) {
                 return -1.0; // Impassable
             } else {
-                return 3.0; // High resistance penalty for engines pushing into wind
+                return 2.0; // High resistance penalty for engines pushing into wind
             }
         }
         // Close-Hauled (Upwind)
@@ -70,9 +70,9 @@ namespace SailingEngine {
         return path;
     }
 
-    std::vector<Node*> Pathfinder::findPath(int startX, int startY, int targetX, int targetY, const Vessel& vessel) {
-        Node* startNode = grid.getNode(startX, startY);
-        Node* targetNode = grid.getNode(targetX, targetY);
+    std::vector<Node*> Pathfinder::findPath(Point start, Point target, const Vessel& vessel) {
+        Node* startNode = grid.getNode(start);
+        Node* targetNode = grid.getNode(target);
 
         if (!startNode || !targetNode) {
             std::cerr << "Error: Start or Target coordinates are out of bounds.\n";
@@ -86,6 +86,9 @@ namespace SailingEngine {
 
         std::vector<Node*> openSet;
         std::unordered_set<Node*> closedSet;
+
+        startNode->gCost = 0.0;
+        startNode->hCost = calculateHeuristic(startNode, targetNode);
 
         openSet.push_back(startNode);
 
@@ -111,27 +114,25 @@ namespace SailingEngine {
                 for (int dy = -1; dy <= 1; ++dy) {
                     if (dx == 0 && dy == 0) continue;
 
-                    int checkX = currentNode->x + dx;
-                    int checkY = currentNode->y + dy;
-                    Node* neighbor = grid.getNode(checkX, checkY);
+                    Point checkPos{currentNode->pos.x + dx, currentNode->pos.y + dy};
+                    Node* neighbor = grid.getNode(checkPos);
 
                     if (!neighbor || closedSet.count(neighbor) || !neighbor->isNavigable(vessel.getDraft())) {
                         continue;
                     }
 
-                    // --- WIND PHYSICS INTEGRATION ---
+                    // Environmental cost application
                     double heading = calculateHeading(dx, dy);
-                    Wind localWind = grid.getWindAt(checkX, checkY);
+                    Wind localWind = grid.getWindAt(checkPos);
                     double windMultiplier = getWindCostMultiplier(heading, localWind, vessel.getPropulsion());
 
-                    // If the multiplier is negative, the boat cannot physically sail in this direction
+                    // Negative multiplier indicates physically impossible headings
                     if (windMultiplier < 0) {
                         continue;
                     }
 
                     double baseMoveCost = (dx != 0 && dy != 0) ? 1.414 : 1.0;
                     double newCostToNeighbor = currentNode->gCost + (baseMoveCost * windMultiplier);
-                    // --------------------------------
 
                     bool inOpenSet = std::find(openSet.begin(), openSet.end(), neighbor) != openSet.end();
 
@@ -148,7 +149,7 @@ namespace SailingEngine {
             }
         }
 
-        std::cout << "No valid path could be found.\n";
+        // std::cout << "No valid path could be found.\n"; // If isEmpty() then no route was found 
         return {};
     }
 } // namespace SailingEngine

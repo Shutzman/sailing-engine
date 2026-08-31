@@ -4,6 +4,7 @@
 #include "Node.hpp"
 #include "Vessel.hpp"
 #include "Environment.hpp"
+#include "Types.hpp"
 
 namespace SailingEngine {
 
@@ -21,7 +22,13 @@ namespace SailingEngine {
     public:
         explicit Pathfinder(Grid& gridRef);
         
-        std::vector<Node*> findPath(int startX, int startY, int targetX, int targetY, const Vessel& vessel);
+        // Updated to use Point struct
+        std::vector<Node*> findPath(Point start, Point target, const Vessel& vessel);
+
+        // Backward compatibility overload for (int, int)
+        std::vector<Node*> findPath(int startX, int startY, int targetX, int targetY, const Vessel& vessel) {
+            return findPath(Point{startX, startY}, Point{targetX, targetY}, vessel);
+        }
     };
 
 } // namespace SailingEngine

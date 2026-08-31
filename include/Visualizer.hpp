@@ -4,6 +4,7 @@
 #include <map>
 #include "Grid.hpp"
 #include "Node.hpp"
+#include "Types.hpp"
 
 namespace SailingEngine {
     namespace Visualizer {
@@ -45,7 +46,6 @@ namespace SailingEngine {
             static void printLegend();
         };
 
-        void printGrid(const Grid& grid, const std::vector<Node*>& path, int startX, int startY, int targetX, int targetY);
-
+        void printGrid(const Grid& grid, const std::vector<Node*>& path, Point start, Point destination);
     } // namespace Visualizer
 } // namespace SailingEngine

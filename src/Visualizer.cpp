@@ -37,27 +37,29 @@ namespace SailingEngine {
             std::cout << "\n\n";
         }
 
-        void printGrid(const Grid& grid, const std::vector<Node*>& path, int startX, int startY, int targetX, int targetY) {
-            std::cout << "\n" << Color::BOLD << "--- Tactical Sailing Route ---" << Color::RESET << "\n";
-            
-            for (int y = 0; y < grid.getHeight(); ++y) {
-                for (int x = 0; x < grid.getWidth(); ++x) {
-                    const Node* currentNode = grid.getNode(x, y);
+        void printGrid(const Grid& grid, const std::vector<Node*>& path, Point start, Point destination) {
+                    std::cout << "\n" << Color::BOLD << "--- Tactical Sailing Route ---" << Color::RESET << "\n";
                     
-                    bool isStart = (x == startX && y == startY);
-                    bool isEnd = (x == targetX && y == targetY);
-                    bool isPath = (std::find(path.begin(), path.end(), currentNode) != path.end());
+                    for (int y = 0; y < grid.getHeight(); ++y) {
+                        for (int x = 0; x < grid.getWidth(); ++x) {
+                            Point currentPos{x, y};
+                            const Node* currentNode = grid.getNode(currentPos);
+                            
+                            // The Point operator== handles the x and y comparison for us!
+                            bool isStart = (currentPos == start);
+                            bool isEnd = (currentPos == destination);
+                            bool isPath = (std::find(path.begin(), path.end(), currentNode) != path.end());
+                            
+                            RenderEntity entityType = StyleRegistry::determineEntity(currentNode, isStart, isEnd, isPath);
+                            
+                            const EntityStyle& style = StyleRegistry::styles.at(entityType);
+                            std::cout << style.color << style.symbol << Color::RESET;
+                        }
+                        std::cout << "\n";
+                    }
                     
-                    RenderEntity entityType = StyleRegistry::determineEntity(currentNode, isStart, isEnd, isPath);
-                    
-                    const EntityStyle& style = StyleRegistry::styles.at(entityType);
-                    std::cout << style.color << style.symbol << Color::RESET;
+                    StyleRegistry::printLegend();
                 }
-                std::cout << "\n";
-            }
-            
-            StyleRegistry::printLegend();
-        }
 
     } // namespace Visualizer
 } // namespace SailingEngine

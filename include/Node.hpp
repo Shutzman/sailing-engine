@@ -1,42 +1,43 @@
 #pragma once
+#include <limits>
+#include "Types.hpp"
 
 namespace SailingEngine {
 
     enum class TerrainType {
         WATER,
+        SHALLOWS,
         LAND,
-        RESTRICTED // Geofenced boundaries (e.g., military zones, 300m beach buffers)
+        RESTRICTED
     };
 
     struct Node {
-        int x;
-        int y;
+        Point pos;
         TerrainType type;
-        double depth; // Water depth in meters
-        
-        // Pathfinding state variables
-        double gCost; // Known cost from start to this node
-        double hCost; // Heuristic cost to target
-        Node* parent; // Pointer for path reconstruction
+        double depth;
 
-        Node(int x_coord, int y_coord, TerrainType t = TerrainType::WATER, double nodeDepth = 10.0)
-            : x(x_coord), y(y_coord), type(t), depth(nodeDepth), gCost(0.0), hCost(0.0), parent(nullptr) {}
+        double gCost;
+        double hCost;
+        Node* parent;
 
-        // F-Cost: Total path cost evaluation
+        Node(Point position, TerrainType t = TerrainType::WATER, double d = 10.0)
+            : pos(position), type(t), depth(d),
+              gCost(std::numeric_limits<double>::infinity()),
+              hCost(0.0), parent(nullptr) {}
+
+        // Convenience constructor for raw x, y
+        Node(int xVal, int yVal, TerrainType t = TerrainType::WATER, double d = 10.0)
+            : Node(Point{xVal, yVal}, t, d) {}
+
         double fCost() const {
             return gCost + hCost;
         }
 
-        // Determines tile passability based on terrain rules and vessel constraints
         bool isNavigable(double vesselDraft) const {
-            // Evaluate terrain restrictions (impassable zones)
             if (type == TerrainType::LAND || type == TerrainType::RESTRICTED) {
                 return false;
             }
-            
-            // Depth clearance check: requires a 0.5m safety margin beneath the keel
-            const double clearanceMargin = 0.5; 
-            return depth >= (vesselDraft + clearanceMargin);
+            return depth >= vesselDraft;
         }
     };
 
