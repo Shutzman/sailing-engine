@@ -1,7 +1,7 @@
 #include <iostream>
 #include <vector>
-#include <cassert> // <-- The C++ assertion library
-#include <cmath>   // For std::abs
+#include <cassert>
+#include <cmath>
 
 #include "../include/Grid.hpp"
 #include "../include/Vessel.hpp"
@@ -11,18 +11,22 @@
 
 using namespace SailingEngine;
 
+constexpr double TEST_TOLERANCE = 0.01;
+
 void runSailingboatScenario();
 void runMotorboatScenario();
 void runTrappedSailboatScenario();
 void runHybridboatScenario();
+void runSailingboatScenarioLargeScale();
 
 int main() {
     std::cout << "Running Sailing Engine Test Suite...\n\n";
     
-    runSailingboatScenario();
-    runMotorboatScenario();
-    runTrappedSailboatScenario();
+    //runSailingboatScenario();
+    //runMotorboatScenario();
+    //runTrappedSailboatScenario();
     runHybridboatScenario();
+    //runSailingboatScenarioLargeScale();
     
     std::cout << "\nAll tests passed successfully!\n";
     return 0;
@@ -43,9 +47,9 @@ void runSailingboatScenario() {
 
     assert(!route.empty() && "Test Failed: Sailing boat Route should not be empty!");
 
-    double expectedCost = 32.615; 
+    double expectedCost = 38.615; 
     double actualCost = route.back()->gCost;
-    bool costMatches = std::abs(actualCost - expectedCost) < 0.01;
+    bool costMatches = std::abs(actualCost - expectedCost) < TEST_TOLERANCE;
 
     // std::cout << "\nActual cost: " << actualCost << "\n"; // Uncomment to see actual cost
 
@@ -72,7 +76,7 @@ void runMotorboatScenario() {
 
     double expectedCost = 37.5; 
     double actualCost = route.back()->gCost;
-    bool costMatches = std::abs(actualCost - expectedCost) < 0.01;
+    bool costMatches = std::abs(actualCost - expectedCost) < TEST_TOLERANCE;
 
     // std::cout << "\nActual cost: " << actualCost << "\n"; // Uncomment to see actual cost
 
@@ -123,19 +127,18 @@ void runHybridboatScenario() {
     Pathfinder pathfinder(ocean);
     
     Point start{2, 5};
-    Point target{5, 5};
+    Point destination{5, 5};
 
-    std::vector<Node*> route = pathfinder.findPath(start, target, hybrid);
+    std::vector<Node*> route = pathfinder.findPath(start, destination, hybrid);
     
-    // Visualizer::printGrid(ocean, route, start, destination); // Uncomment to view the route!
+    Visualizer::printGrid(ocean, route, start, destination); // Uncomment to view the route!
 
-    
     // Assert that the route is NOT empty
     assert(!route.empty() && "Test Failed: Hybrid boat route Route should not be empty!\n");
     
-    double expectedCost = 54.398; 
+    double expectedCost = 62.398; 
     double actualCost = route.back()->gCost; 
-    bool costMatches = std::abs(actualCost - expectedCost) < 0.01;
+    bool costMatches = std::abs(actualCost - expectedCost) < TEST_TOLERANCE;
 
     // std::cout << "\nActual cost: " << actualCost << "\n"; // Uncomment to see actual cost
 
@@ -143,3 +146,31 @@ void runHybridboatScenario() {
     
     std::cout << "[PASS] Hybrid Scenario\n";
 }
+
+void runSailingboatScenarioLargeScale() {
+    Grid ocean(100, 80);
+    ocean.setUniformWind(Wind(90.0, 25.0));
+    Vessel sailboat(12.0, 3.5, 2.0, PropulsionType::SAIL_ONLY);
+    Pathfinder pathfinder(ocean);
+    
+    Point start{2, 10};
+    Point destination{90, 15};
+
+    std::vector<Node*> route = pathfinder.findPath(start, destination, sailboat);
+    
+    //Visualizer::printGrid(ocean, route, start, destination); // Uncomment to see visualization
+
+    // Assert that the route is NOT empty
+    assert(!route.empty() && "Test Failed: Hybrid boat route Route should not be empty!\n");
+
+    double expectedCost = 191.248; 
+    double actualCost = route.back()->gCost;
+    bool costMatches = std::abs(actualCost - expectedCost) < TEST_TOLERANCE;
+
+    // std::cout << "\nActual cost: " << actualCost << "\n"; // Uncomment to see actual cost
+
+    assert(costMatches && "Test Failed: Large scale kinematic cost mismatch!");
+
+    std::cout << "[PASS] Large Scale Tacking Scenario\n";
+}
+

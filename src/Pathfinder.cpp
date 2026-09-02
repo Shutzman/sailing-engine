@@ -30,7 +30,7 @@ namespace SailingEngine {
         return heading;
     }
 
-    double Pathfinder::getWindCostMultiplier(double heading, const Wind& wind, PropulsionType propulsion) const {
+    double Pathfinder::getWindCostMultiplier(double heading, const Wind& wind, PropulsionType propulsion, bool& engineActive) const {
             constexpr double TWA_NO_GO = 45.0;
             constexpr double TWA_CLOSE_HAULED = 60.0;
             constexpr double TWA_BEAM_REACH = 120.0;
@@ -46,25 +46,27 @@ namespace SailingEngine {
             // Calculate True Wind Angle (TWA)
             double diff = std::fmod(std::abs(heading - wind.directionDegrees), 360.0);
             double twa = diff > 180.0 ? 360.0 - diff : diff; // Normalize True Wind Angle [0, 180]
-            double speed = wind.speedKnots;
+            double speed = wind.speedKnots;       
+            double costMultiplier = 1.0;
 
-            // initialized
-            double costMultiplier = 1.0; 
+            engineActive = (propulsion == PropulsionType::ENGINE_ONLY); // Always true for a boat without sails
 
             // --- 3. EXTREME WEATHER OVERRIDES ---
             if (speed < SPEED_BECALMED) {
-                return (propulsion == PropulsionType::SAIL_ONLY) ? COST_IMPASSABLE : 1.0;
-            }
-            if (speed >= SPEED_HURRICANE && propulsion == PropulsionType::SAIL_ONLY) {
-                return COST_IMPASSABLE; 
+                if (propulsion == PropulsionType::SAIL_ONLY) {
+                    return COST_IMPASSABLE;
+                }
+                engineActive = true; // HYBRID is forced to turn on the engine
+                return 1.0;
             }
 
             // --- 4. POINT OF SAIL PHASES ---
             if (twa < TWA_NO_GO) {
                 if (propulsion == PropulsionType::SAIL_ONLY) {
-                    costMultiplier = COST_IMPASSABLE;
+                    costMultiplier = COST_IMPASSABLE;   
                 } else {
                     // Engine fights wind head-on
+                    engineActive = true;
                     costMultiplier = 1.0 + (speed / 10.0); 
                 }
             }
@@ -74,6 +76,7 @@ namespace SailingEngine {
                 } else {
                     costMultiplier = 1.0 + (speed / 15.0); // Engine pushing angled wind
                 }
+                
             }
             else if (twa < TWA_BEAM_REACH) {
                 if (propulsion == PropulsionType::SAIL_ONLY || propulsion == PropulsionType::HYBRID) {
@@ -161,7 +164,8 @@ namespace SailingEngine {
                     // Environmental cost application
                     double heading = calculateHeading(dx, dy);
                     Wind localWind = grid.getWindAt(checkPos);
-                    double windMultiplier = getWindCostMultiplier(heading, localWind, vessel.getPropulsion());
+                    bool engineActive = false;
+                    double windMultiplier = getWindCostMultiplier(heading, localWind, vessel.getPropulsion(), engineActive);
 
                     // Negative multiplier indicates physically impossible headings
                     if (windMultiplier < 0) {
@@ -196,6 +200,7 @@ namespace SailingEngine {
                         neighbor->gCost = newCostToNeighbor;
                         neighbor->hCost = calculateHeuristic(neighbor, targetNode);
                         neighbor->parent = currentNode;
+                        neighbor->usedEngine = engineActive;
 
                         if (!inOpenSet) {
                             openSet.push_back(neighbor);

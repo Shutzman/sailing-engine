@@ -116,13 +116,13 @@ void runHybridboatScenario() {
 }
 
 void runSailingboatScenarioLargeScale() {
-    Grid ocean(60, 30);
-    ocean.setUniformWind(Wind(90.0, 15.0));
+    Grid ocean(100, 80);
+    ocean.setUniformWind(Wind(90.0, 25.0));
     Vessel sailboat(12.0, 3.5, 2.0, PropulsionType::SAIL_ONLY);
     Pathfinder pathfinder(ocean);
     
     Point start{2, 10};
-    Point destination{55, 15};
+    Point destination{90, 15};
 
     std::vector<Node*> route = pathfinder.findPath(start, destination, sailboat);
     

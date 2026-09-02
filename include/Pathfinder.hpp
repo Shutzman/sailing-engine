@@ -17,8 +17,8 @@ namespace SailingEngine {
         
         // Navigation vector mathematics
         double calculateHeading(int dx, int dy) const;
-        double getWindCostMultiplier(double heading, const Wind& wind, PropulsionType propulsion) const;
-
+        double getWindCostMultiplier(double heading, const Wind& wind, PropulsionType propulsion, bool& engineActive) const;
+        
     public:
         explicit Pathfinder(Grid& gridRef);
         

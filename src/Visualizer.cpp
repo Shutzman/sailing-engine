@@ -9,15 +9,16 @@ namespace SailingEngine {
             {RenderEntity::WATER,       {"~ ", Color::BLUE, "Water"}},
             {RenderEntity::LAND,        {"# ", Color::YELLOW, "Land"}},
             {RenderEntity::RESTRICTED,  {"X ", Color::RED, "Restricted"}},
-            {RenderEntity::PATH,        {"* ", std::string(Color::BOLD) + Color::CYAN, "Path"}},
+            {RenderEntity::PATH_SAILS,  {"* ", std::string(Color::BOLD) + Color::CYAN, "Path (sails)"}},
+            {RenderEntity::PATH_ENGINE, {"* ", std::string(Color::BOLD) + Color::MAGENTA, "Path (Engine)"}},
             {RenderEntity::START,       {"S ", std::string(Color::BOLD) + Color::CYAN, "Start"}},
-            {RenderEntity::DESTINATION, {"D ", std::string(Color::BOLD) + Color::CYAN, "Destination"}}
+            {RenderEntity::DESTINATION, {"D ", std::string(Color::BOLD) + Color::CYAN, "Destination"}},
         };
 
         RenderEntity StyleRegistry::determineEntity(const Node* node, bool isStart, bool isEnd, bool isPath) {
             if (isStart) return RenderEntity::START;
             if (isEnd) return RenderEntity::DESTINATION;
-            if (isPath) return RenderEntity::PATH;
+            if (isPath) return node->usedEngine ? RenderEntity::PATH_ENGINE : RenderEntity::PATH_SAILS;
 
             if (node->type == TerrainType::LAND) return RenderEntity::LAND;
             if (node->type == TerrainType::RESTRICTED) return RenderEntity::RESTRICTED;
