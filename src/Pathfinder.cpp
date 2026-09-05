@@ -2,9 +2,9 @@
 #include <cmath>
 #include <algorithm>
 #include <unordered_set>
+#include <limits>
 #include <iostream>
 
-// Ensure M_PI is defined (some MSVC configurations omit it by default)
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
@@ -13,16 +13,18 @@ namespace SailingEngine {
 
     Pathfinder::Pathfinder(Grid& gridRef) : grid(gridRef) {}
 
-    double Pathfinder::calculateHeuristic(Node* a, Node* b) const {
-        double dx = a->pos.x - b->pos.x;
-        double dy = a->pos.y - b->pos.y;
+    // =========================================================================
+    // Navigation and Geometry Helpers
+    // =========================================================================
+
+    double Pathfinder::calculateDistance(Point a, Point b) const {
+        const double dx = static_cast<double>(a.x - b.x);
+        const double dy = static_cast<double>(a.y - b.y);
         return std::sqrt(dx * dx + dy * dy);
     }
 
     double Pathfinder::calculateHeading(int dx, int dy) const {
-        // Cartesian grid to Compass heading:
-        // dx is East (+), dy is South (+)
-        // atan2(dx, -dy) maps (0, -1) to 0 rad (North), (1, 0) to pi/2 rad (East)
+        // Cartesian grid to compass bearing: dx = East (+), dy = South (+)
         double heading = std::atan2(dx, -dy) * (180.0 / M_PI);
         if (heading < 0.0) {
             heading += 360.0;
@@ -30,116 +32,96 @@ namespace SailingEngine {
         return heading;
     }
 
-    double Pathfinder::getWindCostMultiplier(double heading, const Wind& wind, PropulsionType propulsion, bool& engineActive) const {
-            constexpr double TWA_NO_GO = 45.0;
-            constexpr double TWA_CLOSE_HAULED = 60.0;
-            constexpr double TWA_BEAM_REACH = 120.0;
-
-            constexpr double SPEED_BECALMED = 3.0;
-            constexpr double SPEED_OPTIMAL = 20.0;
-            constexpr double SPEED_HEAVY_WEATHER = 25.0;
-            constexpr double SPEED_STORM = 45.0;
-            constexpr double SPEED_HURRICANE = 50.0;
-
-            constexpr double COST_IMPASSABLE = -1.0;
-            
-            // Calculate True Wind Angle (TWA)
-            double diff = std::fmod(std::abs(heading - wind.directionDegrees), 360.0);
-            double twa = diff > 180.0 ? 360.0 - diff : diff; // Normalize True Wind Angle [0, 180]
-            double speed = wind.speedKnots;       
-            double costMultiplier = 1.0;
-
-            engineActive = (propulsion == PropulsionType::ENGINE_ONLY); // Always true for a boat without sails
-
-            // --- 3. EXTREME WEATHER OVERRIDES ---
-            if (speed < SPEED_BECALMED) {
-                if (propulsion == PropulsionType::SAIL_ONLY) {
-                    return COST_IMPASSABLE;
-                }
-                engineActive = true; // HYBRID is forced to turn on the engine
-                return 1.0;
-            }
-
-            // --- 4. POINT OF SAIL PHASES ---
-            if (twa < TWA_NO_GO) {
-                if (propulsion == PropulsionType::SAIL_ONLY) {
-                    costMultiplier = COST_IMPASSABLE;   
-                } else {
-                    // Engine fights wind head-on
-                    engineActive = true;
-                    costMultiplier = 1.0 + (speed / 10.0); 
-                }
-            }
-            else if (twa < TWA_CLOSE_HAULED) {
-                if (propulsion == PropulsionType::SAIL_ONLY) {
-                    costMultiplier = 1.5; // Heavy heeling penalty
-                } else {
-                    costMultiplier = 1.0 + (speed / 15.0); // Engine pushing angled wind
-                }
-                
-            }
-            else if (twa < TWA_BEAM_REACH) {
-                if (propulsion == PropulsionType::SAIL_ONLY || propulsion == PropulsionType::HYBRID) {
-                    // Optimal sailing phase
-                    costMultiplier = (speed >= SPEED_OPTIMAL && speed < SPEED_STORM) ? 0.6 : 0.8;
-                } else {
-                    // Heavy side-seas cause rolling for motorboats
-                    costMultiplier = (speed >= SPEED_HEAVY_WEATHER) ? 1.2 : 1.0;
-                }
-            }
-            else {
-                // Running Downwind
-                if (propulsion == PropulsionType::SAIL_ONLY) {
-                    costMultiplier = (speed >= SPEED_OPTIMAL) ? 0.8 : 1.0; 
-                }
-            }
-
-            return costMultiplier;
-        }
-
-    bool Pathfinder::hasLineOfSight(Node* fromNode, Node* toNode, double vesselDraft) const {
-        Point p0{fromNode->pos.x, fromNode->pos.y};
-        const Point p1{toNode->pos.x, toNode->pos.y};
-
-        int dx = std::abs(p1.x - p0.x);
-        int dy = std::abs(p1.y - p0.y);
-        
-        int sx = (p0.x < p1.x) ? 1 : -1;
-        int sy = (p0.y < p1.y) ? 1 : -1;
-        
-        int err = dx - dy;
-
-        while (true) {
-            // Check current position using our Point tracker
-            Node* checkNode = grid.getNode(p0);
-            
-            if (!checkNode || !checkNode->isNavigable(vesselDraft)) {
-                return false;
-            }
-
-            // Reached destination successfully
-            if (p0 == p1) {
-                break;
-            }
-
-            int e2 = 2 * err;
-            if (e2 > -dy) {
-                err -= dy;
-                p0.x += sx; // Mutate p0.x correctly
-            }
-            if (e2 < dx) {
-                err += dx;
-                p0.y += sy; // Mutate p0.y correctly
-            }
-        }
-        
-        return true;
+    double Pathfinder::calculateHeuristic(Node* a, Node* b) const {
+        // Scaling Euclidean distance by the optimal reachable polar multiplier (0.6)
+        // guarantees admissibility (h(n) <= c*(n)) across anisotropic wind fields.
+        constexpr double MIN_GLOBAL_COST_MULTIPLIER = 0.6;
+        return calculateDistance(a->pos, b->pos) * MIN_GLOBAL_COST_MULTIPLIER;
     }
+
+    // =========================================================================
+    // Maneuver and Turning Resistance
+    // =========================================================================
+
+    double Pathfinder::calculateManeuverCost(Node* evaluationNode, double newHeading, const Wind& localWind) const {
+        if (!evaluationNode || !evaluationNode->parent) {
+            return 0.0;
+        }
+
+        const int prevDx = evaluationNode->pos.x - evaluationNode->parent->pos.x;
+        const int prevDy = evaluationNode->pos.y - evaluationNode->parent->pos.y;
+        const double prevHeading = calculateHeading(prevDx, prevDy);
+
+        const double turnAngle = NauticalCostModel::calculateAngleDifference(newHeading, prevHeading);
+        if (turnAngle < 5.0) {
+            return 0.0;
+        }
+
+        const double prevTwa = NauticalCostModel::calculateAngleDifference(prevHeading, localWind.directionDegrees);
+        const double newTwa = NauticalCostModel::calculateAngleDifference(newHeading, localWind.directionDegrees);
+
+        // Detect tacking: bow transitions through the wind eye while close-hauled
+        if (prevTwa < 90.0 && newTwa < 90.0 && turnAngle > 60.0) {
+            return 3.5; // Inertial loss and sail handling duration penalty
+        }
+
+        return 1.0; // Rudder redirection drag
+    }
+
+    // =========================================================================
+    // Traversal and Cost Integration
+    // =========================================================================
+
+    std::optional<StepCostResult> Pathfinder::evaluateCell(Point cell, double heading, const Vessel& vessel) const {
+        Node* cellNode = grid.getNode(cell);
+        if (!cellNode || !cellNode->isNavigable(vessel.getDraft())) {
+            return std::nullopt;
+        }
+
+        const Wind cellWind = grid.getWindAt(cell);
+        return costModel.calculateStepCost(heading, cellWind, vessel);
+    }
+
+    std::optional<CourseResult> Pathfinder::checkCourse(Node* fromNode, Node* toNode, const Vessel& vessel) const {
+        const double totalDistance = calculateDistance(fromNode->pos, toNode->pos);
+        const double heading = calculateHeading(toNode->pos.x - fromNode->pos.x, toNode->pos.y - fromNode->pos.y);
+
+        CourseResult result;
+
+        const bool completedTraversal = traverseGridRay(fromNode->pos, toNode->pos, [&](const RayStep& step) {
+            // Origin cell cost is accounted for in previous leg expansions
+            if (step.cell == fromNode->pos) {
+                return true;
+            }
+
+            auto cellEvaluation = evaluateCell(step.cell, heading, vessel);
+            if (!cellEvaluation.has_value()) {
+                return false; // Physical or aerodynamic obstacle encountered; abort segment
+            }
+
+            result.totalCost += (step.dt * totalDistance) * cellEvaluation->costMultiplier;
+            if (cellEvaluation->engineActive) {
+                result.engineUsed = true;
+            }
+
+            return true;
+        });
+
+        if (!completedTraversal) {
+            return std::nullopt;
+        }
+
+        return result;
+    }
+
+    // =========================================================================
+    // Search Graph State and Priority Tracking
+    // =========================================================================
 
     std::vector<Node*>::iterator Pathfinder::getBestNodeIt(std::vector<Node*>& openSet) const {
         auto bestIt = openSet.begin();
         for (auto it = openSet.begin(); it != openSet.end(); ++it) {
-            if ((*it)->fCost() < (*bestIt)->fCost() || 
+            if ((*it)->fCost() < (*bestIt)->fCost() ||
                 ((*it)->fCost() == (*bestIt)->fCost() && (*it)->hCost < (*bestIt)->hCost)) {
                 bestIt = it;
             }
@@ -147,60 +129,41 @@ namespace SailingEngine {
         return bestIt;
     }
 
-    Node* Pathfinder::getThetaEvaluationNode(Node* currentNode, Node* neighbor, double draft) const {
-        if (currentNode->parent != nullptr && hasLineOfSight(currentNode->parent, neighbor, draft)) {
-            return currentNode->parent; // Theta* Bypass
-        }
-        return currentNode; // Standard A* step
-    }
-
-    double Pathfinder::calculateTurnPenalty(Node* evaluationNode, double currentHeading) const {
-        if (evaluationNode->parent == nullptr) {
-            return 0.0;
-        }
-
-        int oldDx = evaluationNode->pos.x - evaluationNode->parent->pos.x;
-        int oldDy = evaluationNode->pos.y - evaluationNode->parent->pos.y;
-        double oldHeading = calculateHeading(oldDx, oldDy);
-        
-        double angleDiff = std::abs(currentHeading - oldHeading);
-        if (angleDiff > 180.0) angleDiff = 360.0 - angleDiff;
-        
-        return (angleDiff > 5.0) ? 2.0 : 0.0;
+    void Pathfinder::updateNodeState(Node* node, Node* parent, Node* destination, double newCost, bool engineActive) const {
+        node->gCost = newCost;
+        node->hCost = calculateHeuristic(node, destination);
+        node->parent = parent;
+        node->usedEngine = engineActive;
     }
 
     std::vector<Node*> Pathfinder::retracePath(Node* startNode, Node* endNode) const {
         std::vector<Node*> path;
         Node* currentNode = endNode;
-        
+
         while (currentNode != startNode) {
             path.push_back(currentNode);
             currentNode = currentNode->parent;
         }
-        
+
         std::reverse(path.begin(), path.end());
         return path;
     }
 
-    void Pathfinder::updateNodeState(Node* node, Node* parent, Node* destination, double newCost, bool engineActive) const {
-            node->gCost = newCost;
-            node->hCost = calculateHeuristic(node, destination);
-            node->parent = parent;
-            node->usedEngine = engineActive;
-    }
-
+    // =========================================================================
+    // Search Execution Loop (Theta* with Competitive Fallback)
+    // =========================================================================
 
     std::vector<Node*> Pathfinder::findPath(Point start, Point target, const Vessel& vessel) {
         Node* startNode = grid.getNode(start);
         Node* targetNode = grid.getNode(target);
 
         if (!startNode || !targetNode) {
-            std::cerr << "Error: Start or Target coordinates are out of bounds.\n";
+            std::cerr << "Error: Start or Target coordinates out of bounds.\n";
             return {};
         }
 
         if (!startNode->isNavigable(vessel.getDraft()) || !targetNode->isNavigable(vessel.getDraft())) {
-            std::cerr << "Error: Start or Target tile is impassable for this vessel's draft.\n";
+            std::cerr << "Error: Start or Target tile is impassable for vessel draft.\n";
             return {};
         }
 
@@ -209,7 +172,6 @@ namespace SailingEngine {
 
         startNode->gCost = 0.0;
         startNode->hCost = calculateHeuristic(startNode, targetNode);
-
         openSet.push_back(startNode);
 
         while (!openSet.empty()) {
@@ -227,45 +189,71 @@ namespace SailingEngine {
                 for (int dy = -1; dy <= 1; ++dy) {
                     if (dx == 0 && dy == 0) continue;
 
-                    Point checkPos{currentNode->pos.x + dx, currentNode->pos.y + dy};
+                    const Point checkPos{ currentNode->pos.x + dx, currentNode->pos.y + dy };
                     Node* neighbor = grid.getNode(checkPos);
 
                     if (!neighbor || closedSet.count(neighbor) || !neighbor->isNavigable(vessel.getDraft())) {
                         continue;
                     }
 
-                    // 1. Theta* Line-of-Sight Bypass
-                    Node* evaluationNode = getThetaEvaluationNode(currentNode, neighbor, vessel.getDraft());
+                    // Candidate A: Discrete 8-connected grid step from currentNode
+                    double candidateCostA = std::numeric_limits<double>::infinity();
+                    bool engineUsedA = false;
 
-                    // 2. Continuous Vector Math from the actual evaluation node (parent or current)
-                    int moveDx = neighbor->pos.x - evaluationNode->pos.x;
-                    int moveDy = neighbor->pos.y - evaluationNode->pos.y;
-                    
-                    double heading = calculateHeading(moveDx, moveDy);
-                    
-                    // Sample wind at the midpoint or target of the vector for realistic environment impact
-                    Wind localWind = grid.getWindAt(neighbor->pos);
-                    
-                    bool engineActive = false;
-                    double windMultiplier = getWindCostMultiplier(heading, localWind, vessel.getPropulsion(), engineActive);
+                    auto stepCourse = checkCourse(currentNode, neighbor, vessel);
+                    if (stepCourse.has_value()) {
+                        const double headingA = calculateHeading(dx, dy);
+                        const Wind localWind = grid.getWindAt(neighbor->pos);
+                        const double maneuverA = calculateManeuverCost(currentNode, headingA, localWind);
+                        const double hybridPenaltyA = (stepCourse->engineUsed && vessel.getPropulsion() == PropulsionType::HYBRID) ? 5.0 : 0.0;
 
-                    if (windMultiplier < 0) {
-                        continue; // Physically impossible heading (e.g., direct headwind on sails)
+                        candidateCostA = currentNode->gCost + stepCourse->totalCost + maneuverA + hybridPenaltyA;
+                        engineUsedA = stepCourse->engineUsed;
                     }
 
-                    // 3. Calculate Penalties
-                    double turnPenalty = calculateTurnPenalty(evaluationNode, heading);
-                    double enginePenalty = (engineActive && vessel.getPropulsion() == PropulsionType::HYBRID) ? 5.0 : 0.0;
+                    // Candidate B: Continuous any-angle shortcut from currentNode->parent
+                    double candidateCostB = std::numeric_limits<double>::infinity();
+                    bool engineUsedB = false;
 
-                    // 4. Final Any-Angle Cost (True Euclidean Distance vector)
-                    double baseMoveCost = std::sqrt(moveDx * moveDx + moveDy * moveDy);
-                    double newCostToNeighbor = evaluationNode->gCost + (baseMoveCost * windMultiplier) + turnPenalty + enginePenalty;
+                    if (currentNode->parent != nullptr) {
+                        auto shortcutCourse = checkCourse(currentNode->parent, neighbor, vessel);
+                        if (shortcutCourse.has_value()) {
+                            const int shortcutDx = neighbor->pos.x - currentNode->parent->pos.x;
+                            const int shortcutDy = neighbor->pos.y - currentNode->parent->pos.y;
+                            const double headingB = calculateHeading(shortcutDx, shortcutDy);
+                            const Wind localWind = grid.getWindAt(neighbor->pos);
 
-                    bool inOpenSet = std::find(openSet.begin(), openSet.end(), neighbor) != openSet.end();
+                            const double maneuverB = calculateManeuverCost(currentNode->parent, headingB, localWind);
+                            const double hybridPenaltyB = (shortcutCourse->engineUsed && vessel.getPropulsion() == PropulsionType::HYBRID) ? 5.0 : 0.0;
 
-                    // 5. Update Neighbor
-                    if (newCostToNeighbor < neighbor->gCost || !inOpenSet) {
-                        updateNodeState(neighbor, evaluationNode, targetNode, newCostToNeighbor, engineActive);
+                            candidateCostB = currentNode->parent->gCost + shortcutCourse->totalCost + maneuverB + hybridPenaltyB;
+                            engineUsedB = shortcutCourse->engineUsed;
+                        }
+                    }
+
+                    // Select the cost-optimal valid parent
+                    Node* bestParent = nullptr;
+                    double bestCandidateCost = std::numeric_limits<double>::infinity();
+                    bool bestEngineUsed = false;
+
+                    if (candidateCostB < candidateCostA) {
+                        bestParent = currentNode->parent;
+                        bestCandidateCost = candidateCostB;
+                        bestEngineUsed = engineUsedB;
+                    } else if (std::isfinite(candidateCostA)) {
+                        bestParent = currentNode;
+                        bestCandidateCost = candidateCostA;
+                        bestEngineUsed = engineUsedA;
+                    }
+
+                    if (!bestParent) {
+                        continue;
+                    }
+
+                    const bool inOpenSet = std::find(openSet.begin(), openSet.end(), neighbor) != openSet.end();
+
+                    if (bestCandidateCost < neighbor->gCost || !inOpenSet) {
+                        updateNodeState(neighbor, bestParent, targetNode, bestCandidateCost, bestEngineUsed);
 
                         if (!inOpenSet) {
                             openSet.push_back(neighbor);
@@ -277,4 +265,5 @@ namespace SailingEngine {
 
         return {};
     }
+
 } // namespace SailingEngine

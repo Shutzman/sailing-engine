@@ -1,34 +1,46 @@
 #pragma once
+
 #include <vector>
+#include <optional>
 #include "Grid.hpp"
 #include "Node.hpp"
 #include "Vessel.hpp"
-#include "Environment.hpp"
-#include "Types.hpp"
+#include "NauticalCostModel.hpp"
+#include "RaycastTraversal.hpp"
 
 namespace SailingEngine {
 
+    struct CourseResult {
+        double totalCost = 0.0;
+        bool engineUsed = false;
+    };
+
     class Pathfinder {
-    private:
-        Grid& grid;
-        
-        double calculateHeuristic(Node* a, Node* b) const;
-        std::vector<Node*> retracePath(Node* startNode, Node* endNode) const;
-        
-        // Navigation vector mathematics
-        double calculateHeading(int dx, int dy) const;
-        double getWindCostMultiplier(double heading, const Wind& wind, PropulsionType propulsion, bool& engineActive) const;
-        
     public:
         explicit Pathfinder(Grid& gridRef);
-        
-        // Updated to use Point struct
+
         std::vector<Node*> findPath(Point start, Point target, const Vessel& vessel);
 
-        // Backward compatibility overload for (int, int)
-        std::vector<Node*> findPath(int startX, int startY, int targetX, int targetY, const Vessel& vessel) {
-            return findPath(Point{startX, startY}, Point{targetX, targetY}, vessel);
-        }
+    private:
+        Grid& grid;
+        NauticalCostModel costModel;
+
+        // Navigation and metric helpers
+        double calculateHeuristic(Node* a, Node* b) const;
+        double calculateHeading(int dx, int dy) const;
+        double calculateDistance(Point a, Point b) const;
+
+        // Environmental evaluation along continuous segments
+        std::optional<StepCostResult> evaluateCell(Point cell, double heading, const Vessel& vessel) const;
+        std::optional<CourseResult> checkCourse(Node* fromNode, Node* toNode, const Vessel& vessel) const;
+
+        // Dynamic steering and maneuver costs
+        double calculateManeuverCost(Node* evaluationNode, double newHeading, const Wind& localWind) const;
+
+        // Search state mutations and path tracking
+        void updateNodeState(Node* node, Node* parent, Node* destination, double newCost, bool engineActive) const;
+        std::vector<Node*> retracePath(Node* startNode, Node* endNode) const;
+        std::vector<Node*>::iterator getBestNodeIt(std::vector<Node*>& openSet) const;
     };
 
 } // namespace SailingEngine

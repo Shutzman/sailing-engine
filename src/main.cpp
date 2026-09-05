@@ -8,6 +8,7 @@
 #include "../include/Pathfinder.hpp"
 #include "../include/Visualizer.hpp"
 #include "../include/Types.hpp"
+#include "../include/Exporter.hpp"
 
 using namespace SailingEngine;
 
@@ -100,7 +101,7 @@ void runHybridboatScenario() {
     }
     ocean.setTerrainType(Point{4, 5}, TerrainType::RESTRICTED);
 
-    Vessel hybrid(12.0, 3.5, 2.0, PropulsionType::HYBRID);
+    Vessel hybrid(PropulsionType::HYBRID);
     Pathfinder pathfinder(ocean);
     
     Point start{2, 5};
@@ -117,18 +118,23 @@ void runHybridboatScenario() {
 
 void runSailingboatScenarioLargeScale() {
     Grid ocean(100, 80);
-    ocean.setUniformWind(Wind(90.0, 25.0));
-    Vessel sailboat(12.0, 3.5, 2.0, PropulsionType::SAIL_ONLY);
+    ocean.setUniformWind(Wind(90.0, 10.0));
+    Vessel sailboat(PropulsionType::SAIL_ONLY);
     Pathfinder pathfinder(ocean);
     
     Point start{2, 10};
-    Point destination{90, 15};
+    Point destination{70, 15};
 
     std::vector<Node*> route = pathfinder.findPath(start, destination, sailboat);
     
-    Visualizer::printGrid(ocean, route, start, destination); // Uncomment to see visualization
+    // Visualizer::printGrid(ocean, route, start, destination); // Uncomment to see visualization
 
-    double actualCost = route.back()->gCost;
-
-    std::cout << "\nActual cost: " << actualCost << "\n"; // Uncomment to see actual cost
+    if (!route.empty()) {
+        double actualCost = route.back()->gCost;
+        std::cout << "\nActual cost: " << actualCost << "\n";
+        
+        exportRouteToJson("../../../output/route_output.json", route, start, destination);
+    } else {
+        std::cout << "\nNo path available between start and destination.\n";
+    }
 }
