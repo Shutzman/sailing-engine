@@ -1,10 +1,11 @@
 #include "../include/Exporter.hpp"
+#include "../include/Grid.hpp"
 #include <fstream>
 #include <iostream>
 #include <filesystem>
 
 namespace SailingEngine {
-    void exportRouteToJson(const std::string& filename, const std::vector<Node*>& route, Point start, Point destination) {
+    void exportRouteToJson(const std::string& filename, const std::vector<Node*>& route, Point start, Point destination, const Grid& grid) {
         std::filesystem::path filePath(filename);
         if (filePath.has_parent_path()) {
             std::filesystem::create_directories(filePath.parent_path());
@@ -13,8 +14,39 @@ namespace SailingEngine {
         std::ofstream file(filename);
         if (file.is_open()) {
             file << "{\n";
+            file << "  \"width\": " << grid.getWidth() << ",\n";
+            file << "  \"height\": " << grid.getHeight() << ",\n";
             file << "  \"start\": {\"x\": " << start.x << ", \"y\": " << start.y << "},\n";
             file << "  \"destination\": {\"x\": " << destination.x << ", \"y\": " << destination.y << "},\n";
+            
+            // Export land coordinates
+            file << "  \"land\": [\n";
+            bool firstLand = true;
+            for (int x = 0; x < grid.getWidth(); ++x) {
+                for (int y = 0; y < grid.getHeight(); ++y) {
+                    if (grid.getNode(Point{x, y})->type == TerrainType::LAND) {
+                        if (!firstLand) file << ",\n";
+                        file << "    {\"x\": " << x << ", \"y\": " << y << "}";
+                        firstLand = false;
+                    }
+                }
+            }
+            file << "\n  ],\n";
+
+            // Export wind field (Subsampled every 4 cells to keep JSON manageable)
+            file << "  \"wind_field\": [\n";
+            bool firstWind = true;
+            for (int x = 0; x < grid.getWidth(); x += 4) {
+                for (int y = 0; y < grid.getHeight(); y += 4) {
+                    Wind w = grid.getWindAt(Point{x, y});
+                    if (!firstWind) file << ",\n";
+                    file << "    {\"x\": " << x << ", \"y\": " << y << ", \"dir\": " << w.directionDegrees << ", \"spd\": " << w.speedKnots << "}";
+                    firstWind = false;
+                }
+            }
+            file << "\n  ],\n";
+
+            // Export path coordinates
             file << "  \"path\": [\n";
             for (size_t i = 0; i < route.size(); ++i) {
                 file << "    {\"x\": " << route[i]->pos.x << ", \"y\": " << route[i]->pos.y << "}" << (i + 1 < route.size() ? "," : "") << "\n";

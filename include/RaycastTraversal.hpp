@@ -36,14 +36,10 @@ namespace SailingEngine {
         const double tDeltaX = (dx != 0.0) ? std::abs(1.0 / dx) : INF;
         const double tDeltaY = (dy != 0.0) ? std::abs(1.0 / dy) : INF;
 
-        // Parametric distance to the first integer grid boundary
-        double tMaxX = (dx > 0.0) ? (std::floor(p0.x + 1.0) - p0.x) * tDeltaX :
-                       (dx < 0.0 ? (p0.x - std::floor(p0.x)) * tDeltaX : INF);
-        double tMaxY = (dy > 0.0) ? (std::floor(p0.y + 1.0) - p0.y) * tDeltaY :
-                       (dy < 0.0 ? (p0.y - std::floor(p0.y)) * tDeltaY : INF);
-
-        if (tMaxX == 0.0) tMaxX = tDeltaX;
-        if (tMaxY == 0.0) tMaxY = tDeltaY;
+        // Grid coordinates represent the center of the cell. 
+        // A ray starting at the center reaches the first cell boundary at exactly half a step.
+        double tMaxX = (dx != 0.0) ? 0.5 * tDeltaX : INF;
+        double tMaxY = (dy != 0.0) ? 0.5 * tDeltaY : INF;
 
         Point currentCell = p0;
         double tCurrent = 0.0;
@@ -53,7 +49,7 @@ namespace SailingEngine {
             const double dt = tNext - tCurrent;
 
             if (!visitor(RayStep{ currentCell, dt })) {
-                return false;
+                return false; // Ray hit an obstacle or no-go zone
             }
 
             if (tMaxX < tMaxY) {
@@ -64,10 +60,6 @@ namespace SailingEngine {
                 currentCell.y += stepY;
                 tCurrent = tMaxY;
                 tMaxY += tDeltaY;
-            }
-
-            if (currentCell == p1 && tCurrent >= 1.0) {
-                break;
             }
         }
 
