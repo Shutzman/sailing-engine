@@ -30,6 +30,9 @@ namespace SailingEngine {
         Grid(const Grid&) = delete;
         Grid& operator=(const Grid&) = delete;
 
+        // Resets gCost, hCost, parent and usedEngine on all nodes before a new search
+        void resetSearchState();
+
         // Setters using Point
         void setTerrainType(Point p, TerrainType type);
         void setDepth(Point p, double newDepth);

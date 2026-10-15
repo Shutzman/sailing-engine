@@ -1,20 +1,49 @@
 # Autonomous Sailing Pathfinding Engine
 
-## 🎯 Project Overview
+## 🎯 What This Is
 
-A high-performance C++ pathfinding engine tailored for maritime navigation. It calculates optimal routes across a 2D grid by evaluating environmental factors like wind direction, water depth, and vessel capabilities.
+A high-performance C++ pathfinding engine tailored for maritime navigation. This engine calculates optimal, physically realistic routes across a 2D grid by evaluating heterogeneous environmental vector fields (wind direction, land masses, water depth) against specific vessel capabilities.
 
-## 🟢 In-Scope (Phase 1: Core Engine)
+Instead of relying on standard discrete A* grid steps, the system utilizes continuous computational geometry (Theta* with Amanatides-Woo raycasting) to find the most direct, sailable routes.
 
-- **2D Grid & ASCII Visualization:** A coordinate map representing terrain, depth, and dynamic obstacles, visualized directly in the terminal.
-- **A\* Pathfinding Implementation:** Optimized shortest-path algorithm.
-- **Vessel Profiling:** Accounts for ship draft (שוקע) against water depth, and propulsion type (Sail vs. Engine).
-- **Wind-Aware Heuristics:** Sail-powered vessels will be penalized or restricted from sailing directly into the wind, requiring realistic tacking routes.
-- **Extensible Architecture:** Built using Interfaces (`IEnvironmentalProvider`, `IObstacleProvider`) to allow easy future integration of live Weather APIs and crowd-sourced hazard warnings.
-- **Tactical Logging:** Detailed tracking of algorithmic decision-making and performance metrics.
+## 🛠️ Core Capabilities
 
-## 🔴 Out-of-Scope (Phase 1)
+- **Nautical Physics Heuristic:** Evaluates True Wind Angle (TWA) to prevent illegal headwind routing, forcing realistic upwind tacking maneuvers.
+- **Continuous Raycasting:** Replaces jagged grid-stepping with smooth line-of-sight shortcuts across dynamic environmental zones.
+- **Environmental Vector Fields:** Simulates complex macro-environments including localized wind shadows, thermal shifts, and varying channel widths.
+- **Multi-Language Pipeline:** The C++ backend calculates the route and serializes the environment into JSON, which is then rendered by a custom Python visualizer into nautical charts with dynamic wind quiver plots.
 
-- **Graphical User Interface (GUI):** No heavy rendering engines (OpenGL, Qt).
-- **Live API Connections:** Weather and social hazards are statically mocked for now; live web requests are deferred to Phase 2.
-- **Advanced Physics:** Wave drag, momentum, and turning radius inertia are excluded.
+## 📍 Phase 1 Roadmap
+
+The current development phase focuses on finalizing the core routing logic and physics integration:
+
+- [x] Any-Angle Theta\* Pathfinding implementation
+- [x] Voxel raycasting for environmental evaluation
+- [x] Python-based visualization and JSON serialization pipeline
+- [ ] **Hybrid Propulsion State Machine:** Allowing vessels to dynamically drop sails and engage an engine when trapped in un-sailable headwind channels.
+- [ ] Integration of simulated ocean currents into the cost heuristic.
+
+---
+
+## 🚀 Quick Start Guide
+
+Follow these steps to build the C++ engine, generate a route, and visualize the nautical chart.
+
+### Prerequisites
+
+- **C++17 Compiler** (MSVC, GCC, or Clang)
+- **CMake** (3.10 or higher)
+- **Python 3.x** with `matplotlib` installed (`pip install matplotlib`)
+
+### 1. Build the C++ Engine
+
+Clone the repository and build the project using CMake:
+
+```bash
+git clone [https://github.com/Shutzman/sailing-engine.git](https://github.com/Shutzman/sailing-engine.git)
+cd sailing-engine
+mkdir build
+cd build
+cmake ..
+cmake --build .
+```

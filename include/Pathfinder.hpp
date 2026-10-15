@@ -35,7 +35,7 @@ namespace SailingEngine {
         std::optional<CourseResult> checkCourse(Node* fromNode, Node* toNode, const Vessel& vessel) const;
 
         // Dynamic steering and maneuver costs
-        double calculateManeuverCost(Node* evaluationNode, double newHeading, const Wind& localWind) const;
+        double calculateManeuverCost(Node* evaluationNode, double newHeading, const Wind& localWind, bool usingEngine) const;
 
         // Search state mutations and path tracking
         void updateNodeState(Node* node, Node* parent, Node* destination, double newCost, bool engineActive) const;

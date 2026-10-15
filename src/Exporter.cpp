@@ -3,6 +3,7 @@
 #include <fstream>
 #include <iostream>
 #include <filesystem>
+#include <cmath> // Required for std::hypot calculations
 
 namespace SailingEngine {
     void exportRouteToJson(const std::string& filename, const std::vector<Node*>& route, Point start, Point destination, const Grid& grid) {
@@ -13,11 +14,38 @@ namespace SailingEngine {
 
         std::ofstream file(filename);
         if (file.is_open()) {
+            // Calculate Metrics
+            double actualCost = route.empty() ? 0.0 : route.back()->gCost;
+            double aerialDist = std::hypot(destination.x - start.x, destination.y - start.y);
+            double routeDist = 0.0;
+            
+            if (!route.empty()) {
+                for (size_t i = 1; i < route.size(); ++i) {
+                    routeDist += std::hypot(route[i]->pos.x - route[i-1]->pos.x, 
+                                            route[i]->pos.y - route[i-1]->pos.y);
+                }
+            }
+
+            // Terminal "console.log" Output
+            std::cout << "\n--- ROUTE STATISTICS ---\n";
+            std::cout << "Actual Cost:     " << actualCost << "\n";
+            std::cout << "Aerial Distance: " << aerialDist << " cells\n";
+            std::cout << "Route Distance:  " << routeDist << " cells\n";
+            std::cout << "------------------------\n\n";
+
+            // Begin JSON output
             file << "{\n";
             file << "  \"width\": " << grid.getWidth() << ",\n";
             file << "  \"height\": " << grid.getHeight() << ",\n";
             file << "  \"start\": {\"x\": " << start.x << ", \"y\": " << start.y << "},\n";
             file << "  \"destination\": {\"x\": " << destination.x << ", \"y\": " << destination.y << "},\n";
+            
+            // Export Metrics
+            file << "  \"metrics\": {\n";
+            file << "    \"cost\": " << actualCost << ",\n";
+            file << "    \"aerial_distance\": " << aerialDist << ",\n";
+            file << "    \"route_distance\": " << routeDist << "\n";
+            file << "  },\n";
             
             // Export land coordinates
             file << "  \"land\": [\n";

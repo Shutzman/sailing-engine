@@ -1,6 +1,7 @@
 #include "../include/Grid.hpp"
 #include <stdexcept>
 #include <algorithm>
+#include <limits>
 
 namespace SailingEngine {
 
@@ -21,6 +22,18 @@ namespace SailingEngine {
             for (int y = 0; y < height; ++y) {
                 // Construct Nodes with Point ownership
                 gridData[x].push_back(std::make_unique<Node>(Point{x, y}));
+            }
+        }
+    }
+
+    void Grid::resetSearchState() {
+        for (int x = 0; x < width; ++x) {
+            for (int y = 0; y < height; ++y) {
+                Node* node = gridData[x][y].get();
+                node->gCost = std::numeric_limits<double>::infinity();
+                node->hCost = 0.0;
+                node->parent = nullptr;
+                node->usedEngine = false;
             }
         }
     }

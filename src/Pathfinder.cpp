@@ -43,7 +43,7 @@ namespace SailingEngine {
     // Maneuver and Turning Resistance
     // =========================================================================
 
-    double Pathfinder::calculateManeuverCost(Node* evaluationNode, double newHeading, const Wind& localWind) const {
+    double Pathfinder::calculateManeuverCost(Node* evaluationNode, double newHeading, const Wind& localWind, bool usingEngine) const {
         if (!evaluationNode || !evaluationNode->parent) {
             return 0.0;
         }
@@ -57,15 +57,32 @@ namespace SailingEngine {
             return 0.0;
         }
 
-        const double prevTwa = NauticalCostModel::calculateAngleDifference(prevHeading, localWind.directionDegrees);
-        const double newTwa = NauticalCostModel::calculateAngleDifference(newHeading, localWind.directionDegrees);
-
-        // Detect tacking: bow transitions through the wind eye while close-hauled
-        if (prevTwa < 90.0 && newTwa < 90.0 && turnAngle > 60.0) {
-            return 3.5; // Inertial loss and sail handling duration penalty
+        // If motoring, only apply basic rudder drag
+        if (usingEngine) {
+            return 1.0;
         }
 
-        return 1.0; // Rudder redirection drag
+        // Compute signed relative wind angles in [-180.0, 180.0]
+        auto getSignedWindAngle = [](double heading, double windDir) {
+            return std::fmod(heading - windDir + 540.0, 360.0) - 180.0;
+        };
+
+        const double prevSignedTwa = getSignedWindAngle(prevHeading, localWind.directionDegrees);
+        const double newSignedTwa  = getSignedWindAngle(newHeading, localWind.directionDegrees);
+
+        // If signs differ (or one hits 0/180 boundary while changing sides): Port <-> Starboard transition
+        if ((prevSignedTwa * newSignedTwa) <= 0.0 && (prevSignedTwa != newSignedTwa)) {
+            // Determine whether the boat turned through the wind eye (0 deg = Tack)
+            // or through the leeward vector (180 deg = Gybe)
+            const double avgAbsTwa = 0.5 * (std::abs(prevSignedTwa) + std::abs(newSignedTwa));
+            if (avgAbsTwa <= 110.0) {
+                return 3.5; // Tacking penalty: inertial loss and sail handling
+            } else {
+                return 2.0; // Gybing penalty: boom crossover control
+            }
+        }
+
+        return 1.0; // Standard rudder redirection drag on the same tack
     }
 
     // =========================================================================
@@ -89,16 +106,12 @@ namespace SailingEngine {
         CourseResult result;
 
         const bool completedTraversal = traverseGridRay(fromNode->pos, toNode->pos, [&](const RayStep& step) {
-            // Origin cell cost is accounted for in previous leg expansions
-            if (step.cell == fromNode->pos) {
-                return true;
-            }
-
             auto cellEvaluation = evaluateCell(step.cell, heading, vessel);
             if (!cellEvaluation.has_value()) {
                 return false; // Physical or aerodynamic obstacle encountered; abort segment
             }
 
+            // Every fraction of the ray (including the 0.5 exit step from fromNode) is accurately billed
             result.totalCost += (step.dt * totalDistance) * cellEvaluation->costMultiplier;
             if (cellEvaluation->engineActive) {
                 result.engineUsed = true;
@@ -140,8 +153,9 @@ namespace SailingEngine {
         std::vector<Node*> path;
         Node* currentNode = endNode;
 
-        while (currentNode != startNode) {
+        while (currentNode != nullptr) {
             path.push_back(currentNode);
+            if (currentNode == startNode) break;
             currentNode = currentNode->parent;
         }
 
@@ -166,6 +180,8 @@ namespace SailingEngine {
             std::cerr << "Error: Start or Target tile is impassable for vessel draft.\n";
             return {};
         }
+
+        grid.resetSearchState();
 
         std::vector<Node*> openSet;
         std::unordered_set<Node*> closedSet;
@@ -204,7 +220,7 @@ namespace SailingEngine {
                     if (stepCourse.has_value()) {
                         const double headingA = calculateHeading(dx, dy);
                         const Wind localWind = grid.getWindAt(neighbor->pos);
-                        const double maneuverA = calculateManeuverCost(currentNode, headingA, localWind);
+                        const double maneuverA = calculateManeuverCost(currentNode, headingA, localWind, stepCourse->engineUsed);
                         const double hybridPenaltyA = (stepCourse->engineUsed && vessel.getPropulsion() == PropulsionType::HYBRID) ? 5.0 : 0.0;
 
                         candidateCostA = currentNode->gCost + stepCourse->totalCost + maneuverA + hybridPenaltyA;
@@ -223,7 +239,7 @@ namespace SailingEngine {
                             const double headingB = calculateHeading(shortcutDx, shortcutDy);
                             const Wind localWind = grid.getWindAt(neighbor->pos);
 
-                            const double maneuverB = calculateManeuverCost(currentNode->parent, headingB, localWind);
+                            const double maneuverB = calculateManeuverCost(currentNode->parent, headingB, localWind, shortcutCourse->engineUsed);
                             const double hybridPenaltyB = (shortcutCourse->engineUsed && vessel.getPropulsion() == PropulsionType::HYBRID) ? 5.0 : 0.0;
 
                             candidateCostB = currentNode->parent->gCost + shortcutCourse->totalCost + maneuverB + hybridPenaltyB;
